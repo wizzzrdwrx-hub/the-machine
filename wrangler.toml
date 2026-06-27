@@ -1,0 +1,15 @@
+name = "the-machine-backend"
+main = "backend/src/index.js"
+compatibility_date = "2026-06-01"
+
+[[durable_objects.bindings]]
+name = "LIVE_VIEW"
+class_name = "LiveViewProcessor"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "the-machine-observations"
+# database_id = "your-database-id-here"
