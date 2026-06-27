@@ -2,15 +2,17 @@
 
 **Augmented Reality Surveillance HUD** inspired by *Person of Interest*.
 
-Point your phone camera at the world and see the relevant entities the Machine already knows about — aircraft you can't quite see yet, ships over the horizon, the ISS overhead, and ground assets.
+Point your phone camera at the world and see the relevant entities the Machine already knows about.
 
-## Features
-- Live camera feed with real geolocation + device compass
-- Bearing math for accurate world projection
+## Features (v2)
+- **Live OpenSky aircraft data** — real ADS-B planes in your area
+- **Real ISS + satellite propagation** using `satellite.js` + Celestrak TLEs
+- **On-device object detection** (TensorFlow.js + COCO-SSD ready — scan button runs inference)
 - Toggleable layers: AIR, SEA, ORBIT, GROUND, VISUAL
-- Rich entity data, threat levels, and streaming Machine log
-- Lock targets and export C2PA-style manifests
-- "Scan Visual" for on-device style object detection simulation
+- Real geolocation + device compass + bearing math for world-accurate overlays
+- Rich entity dossiers, threat levels, streaming Machine log
+- Lock + export C2PA-style manifests
+- Full PWA support (installable, offline-ready)
 
 ## Quick Start
 
@@ -19,19 +21,29 @@ npm install
 npm run dev
 ```
 
-Allow camera and location permissions in your browser.
+Allow camera + location. Works best on mobile Chrome/Firefox.
 
-Then turn your phone toward planes, the harbor, or the sky.
+## Deploy
 
-## Tech
-React + Vite + Lucide icons + real navigation math.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwizzzrdwrx-hub%2Fthe-machine)
 
-## Future Enhancements (PRs welcome)
-- Live OpenSky Network aircraft data
-- Real satellite tracking with satellite.js + Celestrak TLEs
-- On-device TensorFlow.js / MediaPipe object detection
-- Native React Native + ARKit/ARCore version
+## Tech Stack
+- React + Vite
+- Tailwind (CDN for instant demo)
+- Lucide icons
+- Real navigation math
+- OpenSky Network API
+- satellite.js
+- TensorFlow.js (optional heavy feature)
 
-This is a creative prototype. Use responsibly.
+## Future / Contributions
+PRs welcome for:
+- Authenticated OpenSky with higher rate limits
+- More satellites & constellations
+- Full TFJS model persistence + custom classes
+- Backend fusion service
+- Native AR version
 
-Built with theatrical flair by Skippy the Magnificent for Robert.
+Use responsibly. This is art.
+
+Built with maximum theatrical flair by Skippy the Magnificent for Robert.
