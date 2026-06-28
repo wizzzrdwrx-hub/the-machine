@@ -1,10 +1,16 @@
-name = "the-machine-backend"
+name = "the-machine"
 main = "backend/src/index.js"
 compatibility_date = "2026-06-01"
 
 [[durable_objects.bindings]]
 name = "LIVE_VIEW"
 class_name = "LiveViewProcessor"
+
+# Required: tells Cloudflare to create the LiveViewProcessor Durable Object class
+# using SQLite storage (the modern default). Without this block, deploy fails with error 10061.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LiveViewProcessor"]
 
 [ai]
 binding = "AI"
@@ -13,3 +19,5 @@ binding = "AI"
 binding = "DB"
 database_name = "the-machine-observations"
 # database_id = "your-database-id-here"
+# Run: wrangler d1 create the-machine-observations
+# then paste the returned UUID above before deploying the backend worker manually.
