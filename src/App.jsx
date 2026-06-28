@@ -31,6 +31,9 @@ const STARLINK_TLE = `1 12345U 98067A   26177.50000000  .00001234  00000-0  1234
 const GPS_TLE = `1 67890U 98067A   26177.30000000  .00000500  00000-0  50000-5 0  9999
 2 67890  55.0000 120.0000 0000500 090.0000 270.0000 15.00000000150000`;
 
+// === Backend Configuration ===
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'https://the-machine.wizzzrdwrx.workers.dev';
+
 export default function TheMachineApp() {
   // === Core States ===
   const [activeLayers, setActiveLayers] = useState(new Set(['AIR', 'SEA', 'ORBIT', 'GROUND', 'VISUAL']));
@@ -105,12 +108,10 @@ export default function TheMachineApp() {
     const feedId = Array.from(new Uint8Array(hashBuffer))
       .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 
-    // Read backend URL from environment variable (set VITE_BACKEND_URL in .env)
-    const backendBase = import.meta.env.VITE_BACKEND_URL || 'https://the-machine.wizzzrdwrx.workers.dev';
-    const backendWss = backendBase.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+    const backendWss = BACKEND_BASE_URL.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
 
     try {
-      await fetch(`${backendBase}/live-view/${feedId}/init`, {
+      await fetch(`${BACKEND_BASE_URL}/live-view/${feedId}/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ remoteUrl }),
