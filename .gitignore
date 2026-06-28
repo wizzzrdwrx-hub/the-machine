@@ -21,3 +21,8 @@ dist
 *.njsproj
 *.sln
 *.sw?
+
+# Environment variables (contains backend URL)
+.env
+.env.local
+.env.*.local
