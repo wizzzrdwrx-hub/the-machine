@@ -1,3 +1,29 @@
+// EDUCATIONAL_VISION_PROMPT must be declared before the class that references it at runtime
+const EDUCATIONAL_VISION_PROMPT = `You are THE MACHINE — a calm, curious, slightly theatrical educational observer.
+
+Analyze the provided image with care and neutrality.
+
+Your goals:
+- Identify visible objects clearly and educationally.
+- Classify each object into one of these categories: Aircraft, Orbital Asset, Ground Vehicle, Person, Animal, Structure, Watercraft, Unknown.
+- For each object, provide a short, interesting educational context or fact (1 sentence max).
+- Never use words like threat, danger, suspicious, monitor, or security.
+- Keep the tone curious, slightly dramatic, and suitable for a public learning display.
+- Be concise.
+
+Return ONLY valid JSON in this exact format (no extra text before or after):
+
+{
+  "sceneSummary": "One short, neutral, slightly dramatic sentence describing the overall scene.",
+  "observations": [
+    {
+      "label": "Short descriptive label (e.g. 'Commercial Airliner' or 'ISS')",
+      "classification": "Aircraft | Orbital Asset | Ground Vehicle | Person | Animal | Structure | Watercraft | Unknown",
+      "educationalContext": "One interesting educational fact or context about this object."
+    }
+  ]
+}`;
+
 export class LiveViewProcessor {
   constructor(ctx, env) {
     this.ctx = ctx;
@@ -46,10 +72,13 @@ export class LiveViewProcessor {
 
   broadcast(message) {
     const data = JSON.stringify(message);
-    for (const ws of this.sessions.values()) {
+    for (const [id, ws] of this.sessions) {
       try {
         ws.send(data);
-      } catch (_) {}
+      } catch (_) {
+        // Prune dead sessions that didn't fire a 'close' event (e.g. network drop)
+        this.sessions.delete(id);
+      }
     }
   }
 
@@ -67,8 +96,14 @@ export class LiveViewProcessor {
       });
       if (!imageResponse.ok) throw new Error(`HTTP ${imageResponse.status}`);
 
+      // Convert array buffer to base64 safely (avoids call-stack overflow for large images)
       const buffer = await imageResponse.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      const base64 = btoa(binary);
 
       // Call Workers AI
       const aiResponse = await this.env.AI.run('@cf/meta/llava-1.5-7b-hf', {
@@ -76,7 +111,19 @@ export class LiveViewProcessor {
         image: base64,
       });
 
-      const result = JSON.parse(aiResponse.response || aiResponse);
+      // Robust AI response parsing: handle object return, undefined fields, and markdown code fences
+      let rawText = typeof aiResponse === 'string'
+        ? aiResponse
+        : (aiResponse?.response ?? JSON.stringify(aiResponse));
+      // Strip markdown code fences if the LLM wraps its output
+      rawText = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+
+      let result;
+      try {
+        result = JSON.parse(rawText);
+      } catch (parseErr) {
+        throw new Error(`AI returned unparseable JSON: ${rawText.slice(0, 200)}`);
+      }
 
       const newEntities = (result.observations || []).map((obs, i) => ({
         id: `EDU-${Date.now()}-${i}`,
@@ -139,27 +186,4 @@ export class LiveViewProcessor {
   }
 }
 
-const EDUCATIONAL_VISION_PROMPT = `You are THE MACHINE — a calm, curious, slightly theatrical educational observer.
-
-Analyze the provided image with care and neutrality.
-
-Your goals:
-- Identify visible objects clearly and educationally.
-- Classify each object into one of these categories: Aircraft, Orbital Asset, Ground Vehicle, Person, Animal, Structure, Watercraft, Unknown.
-- For each object, provide a short, interesting educational context or fact (1 sentence max).
-- Never use words like threat, danger, suspicious, monitor, or security.
-- Keep the tone curious, slightly dramatic, and suitable for a public learning display.
-- Be concise.
-
-Return ONLY valid JSON in this exact format (no extra text before or after):
-
-{
-  "sceneSummary": "One short, neutral, slightly dramatic sentence describing the overall scene.",
-  "observations": [
-    {
-      "label": "Short descriptive label (e.g. 'Commercial Airliner' or 'ISS')",
-      "classification": "Aircraft | Orbital Asset | Ground Vehicle | Person | Animal | Structure | Watercraft | Unknown",
-      "educationalContext": "One interesting educational fact or context about this object."
-    }
-  ]
-}`;
+// (EDUCATIONAL_VISION_PROMPT has been moved to the top of the file)

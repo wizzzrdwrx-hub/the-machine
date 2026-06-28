@@ -51,7 +51,7 @@ export function useCompass() {
     requestPermission();
 
     return () => {
-      window.removeEventListener('deviceorientation', handleOrientation);
+      window.removeEventListener('deviceorientation', handleOrientation, true);
     };
   }, []);
 

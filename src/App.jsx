@@ -35,7 +35,10 @@ export default function TheMachineApp() {
   // === Core States ===
   const [activeLayers, setActiveLayers] = useState(new Set(['AIR', 'SEA', 'ORBIT', 'GROUND', 'VISUAL']));
   const [entities, setEntities] = useState(initialEntities);
-  const [log, setLog] = useState(['> MACHINE v0.3 ONLINE', '> EDUCATIONAL MODE ENABLED']);
+  const [log, setLog] = useState([
+    { id: '1', text: '> MACHINE v0.3 ONLINE' },
+    { id: '2', text: '> EDUCATIONAL MODE ENABLED' },
+  ]);
   const [selectedEntity, setSelectedEntity] = useState(null);
   const [isScanning, setIsScanning] = useState(false);
 
@@ -78,7 +81,7 @@ export default function TheMachineApp() {
   }, [geoPosition]);
 
   const addLog = useCallback((message) => {
-    setLog(prev => [message, ...prev].slice(0, 12));
+    setLog(prev => [{ id: `${Date.now()}-${Math.random()}`, text: message }, ...prev].slice(0, 12));
   }, []);
 
   const toggleLayer = (layer) => {
@@ -96,8 +99,15 @@ export default function TheMachineApp() {
 
     setWsStatus('connecting');
 
-    const feedId = btoa(remoteUrl).replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
-    const backendBase = 'https://the-machine-backend.your-subdomain.workers.dev'; // ← UPDATE THIS
+    // Use SHA-256 hash for a stable, collision-resistant feed ID
+    const encoder = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(remoteUrl));
+    const feedId = Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
+
+    // Read backend URL from environment variable (set VITE_BACKEND_URL in .env)
+    const backendBase = import.meta.env.VITE_BACKEND_URL || 'https://the-machine-backend.your-subdomain.workers.dev';
+    const backendWss = backendBase.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
 
     try {
       await fetch(`${backendBase}/live-view/${feedId}/init`, {
@@ -108,7 +118,7 @@ export default function TheMachineApp() {
 
       if (wsRef.current) wsRef.current.close();
 
-      const wsUrl = `wss://the-machine-backend.your-subdomain.workers.dev/live-view/${feedId}`;
+      const wsUrl = `${backendWss}/live-view/${feedId}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -120,9 +130,13 @@ export default function TheMachineApp() {
       };
 
       ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-        if (msg.type === 'entities') setRemoteEntities(msg.data);
-        if (msg.type === 'status') addLog(`> ${msg.message}`);
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'entities') setRemoteEntities(msg.data);
+          if (msg.type === 'status') addLog(`> ${msg.message}`);
+        } catch (e) {
+          addLog('> INVALID MESSAGE FROM SERVER');
+        }
       };
 
       ws.onclose = () => {
@@ -223,21 +237,24 @@ export default function TheMachineApp() {
 
       if (data.states && data.states.length > 0) {
         const aircraft = data.states.slice(0, 6).map((state, i) => {
-          const [icao24, callsign, , , , lon, lat, alt, , velocity] = state;
+          const [icao24, callsign, , , , lon, lat, altMetres, , velocity] = state;
           const bearing = calculateBearing(userPos.lat, userPos.lon, lat, lon);
+          // OpenSky returns altitude in metres — convert to feet for display
+          const altFeet = Math.round((altMetres || 0) * 3.28084);
 
           return {
             id: `AIR-${icao24}`,
             layer: 'AIR',
             label: callsign?.trim() || `ACFT-${i}`,
             type: 'Aircraft',
+            classification: 'Aircraft',
             bearing: Math.round(bearing),
-            elevation: Math.max(5, Math.min(45, Math.round((alt || 5000) / 400))),
+            elevation: Math.max(5, Math.min(45, Math.round((altMetres || 1500) / 120))), // metres-based elevation angle
             lat,
             lon,
-            alt: Math.round(alt || 0),
-            speed: Math.round(velocity || 400),
-            threat: alt > 8000 ? 'MONITOR' : 'LOW',
+            alt: altFeet,
+            speed: Math.round((velocity || 200) * 1.944), // m/s → knots
+            threat: altMetres > 2438 ? 'MONITOR' : 'LOW', // 2438m ≈ 8000ft
             data: { icao24, callsign: callsign?.trim() || 'UNKNOWN' }
           };
         });
@@ -277,7 +294,7 @@ export default function TheMachineApp() {
           label: pred.class.toUpperCase(),
           type: 'Live Detection',
           bearing: currentHeading + (i * 18 - 27),
-          elevation: 5 + Math.random() * 8,
+          elevation: 5 + (pred.bbox[1] / (sourceElement.height || 240)) * 8,
           lat: userPos.lat,
           lon: userPos.lon,
           alt: 0,
@@ -307,18 +324,22 @@ export default function TheMachineApp() {
     let intervalId;
 
     if (liveVisual) {
+      let running = false; // prevents overlapping async calls
       intervalId = setInterval(async () => {
-        const now = Date.now();
-        if (now - lastDetectionTime.current < 650) return;
-        lastDetectionTime.current = now;
+        if (running) return;
+        if (liveViewMode !== 'device') return;
+        if (!videoRef.current || videoRef.current.readyState < 2) return;
 
-        if (liveViewMode === 'device' && videoRef.current) {
+        running = true;
+        try {
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = 320;
           tempCanvas.height = 240;
           const ctx = tempCanvas.getContext('2d');
           ctx.drawImage(videoRef.current, 0, 0, tempCanvas.width, tempCanvas.height);
           await runObjectDetection(tempCanvas);
+        } finally {
+          running = false;
         }
       }, 700);
     }
@@ -386,6 +407,14 @@ export default function TheMachineApp() {
     const centerX = w / 2;
     const pxPerDegree = w / fov;
 
+    const layerColors = {
+      AIR: '#22c55e',
+      ORBIT: '#60a5fa',
+      SEA: '#38bdf8',
+      GROUND: '#f97316',
+      VISUAL: '#a855f7',
+    };
+
     displayEntities
       .filter(e => activeLayers.has(e.layer))
       .forEach(entity => {
@@ -395,7 +424,7 @@ export default function TheMachineApp() {
 
         const screenY = h * 0.48 - (entity.elevation || 0) * 6;
 
-        const color = entity.classification === 'Aircraft' ? '#22c55e' : '#eab308';
+        const color = layerColors[entity.layer] || '#eab308';
 
         ctx.strokeStyle = color;
         ctx.lineWidth = 1.5;
@@ -489,7 +518,8 @@ export default function TheMachineApp() {
             <Target className="w-5 h-5 text-emerald-400" /> THE MACHINE
           </div>
           <div className="text-xs text-white/50">
-            {userPos.lat.toFixed(4)}°N {userPos.lon.toFixed(4)}°W
+            {Math.abs(userPos.lat).toFixed(4)}°{userPos.lat >= 0 ? 'N' : 'S'}{' '}
+            {Math.abs(userPos.lon).toFixed(4)}°{userPos.lon >= 0 ? 'E' : 'W'}
           </div>
         </div>
 
@@ -527,8 +557,8 @@ export default function TheMachineApp() {
           onClick={handleCanvasClick}
         />
 
-        {/* Layer Toggles */}
-        <div className="absolute top-20 right-6 flex flex-col gap-1 z-40">
+        {/* Layer Toggles — left side, above dossier area */}
+        <div className="absolute top-20 left-6 flex flex-col gap-1 z-40">
           {['AIR', 'SEA', 'ORBIT', 'GROUND', 'VISUAL'].map(layer => (
             <button
               key={layer}
@@ -542,12 +572,12 @@ export default function TheMachineApp() {
           ))}
         </div>
 
-        {/* Log Panel */}
+        {/* Log Panel — right side, no overlap */}
         <div className="absolute top-20 right-6 bottom-24 w-72 bg-black/70 border border-white/10 p-3 text-[10px] overflow-auto z-40 rounded font-mono">
           <div className="text-emerald-400 mb-2 text-xs tracking-widest flex items-center gap-2">
             <Zap className="w-3 h-3" /> MACHINE LOG
           </div>
-          {log.map((entry, i) => <div key={i} className="text-white/70 py-0.5">{entry}</div>)}
+          {log.map(entry => <div key={entry.id} className="text-white/70 py-0.5">{entry.text}</div>)}
         </div>
       </div>
 

@@ -5,7 +5,10 @@ export default {
     const url = new URL(request.url);
     
     if (url.pathname.startsWith('/live-view/')) {
-      const id = env.LIVE_VIEW.idFromName(url.pathname);
+      // Extract the feedId segment so both /init and the WebSocket upgrade
+      // resolve to the SAME Durable Object instance.
+      const feedId = url.pathname.split('/')[2];
+      const id = env.LIVE_VIEW.idFromName(feedId);
       const stub = env.LIVE_VIEW.get(id);
       return stub.fetch(request);
     }
