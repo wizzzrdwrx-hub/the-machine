@@ -106,7 +106,7 @@ export default function TheMachineApp() {
       .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 40);
 
     // Read backend URL from environment variable (set VITE_BACKEND_URL in .env)
-    const backendBase = import.meta.env.VITE_BACKEND_URL || 'https://the-machine-backend.your-subdomain.workers.dev';
+    const backendBase = import.meta.env.VITE_BACKEND_URL || 'https://the-machine.wizzzrdwrx.workers.dev';
     const backendWss = backendBase.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
 
     try {
